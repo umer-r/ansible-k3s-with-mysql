@@ -1,0 +1,158 @@
+---
+- name: Setup single-node k3s with MySQL datastore for Ubuntu 22.04
+  hosts: local
+  become: true
+  # vars_files:
+  #   - vault.yml
+  vars:
+    k3s_db_name: "k3s_db"
+    k3s_db_user: "k3s_user"
+    k3s_tls_san: "<IP>,<DOMAIN>"
+    mysql_root_password: "dummy_pass"
+    k3s_user_password: "dummy_pass"
+
+  tasks:
+    - name: Ensure python3-pymysql is installed (for MySQL modules)
+      ansible.builtin.package:
+        name: python3-pymysql
+        state: present
+
+    - name: Install MySQL Server
+      ansible.builtin.apt:
+        name: mysql-server=8.0.*
+        state: present
+        update_cache: true
+
+    - name: MySQL is running and enabled
+      ansible.builtin.service:
+        name: mysql
+        state: started
+        enabled: true
+
+    - name: MySQL root password is set
+      community.mysql.mysql_user:
+        name: root
+        host: localhost
+        password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        check_implicit_admin: true
+        login_password: "{{ mysql_root_password }}"
+        priv: "*.*:ALL,GRANT"
+        state: present
+
+    - name: Create k3s database
+      community.mysql.mysql_db:
+        name: "{{ k3s_db_name }}"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Create k3s database user
+      community.mysql.mysql_user:
+        name: "{{ k3s_db_user }}"
+        password: "{{ k3s_user_password }}"
+        priv: "{{ k3s_db_name }}.*:ALL"
+        host: 'localhost'
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        state: present
+
+    - name: Allow MySQL to listen on all interfaces
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        regexp: '^bind-address'
+        line: 'bind-address = 0.0.0.0'
+
+    - name: Restart MySQL to apply config
+      ansible.builtin.service:
+        name: mysql
+        state: restarted
+
+    - name: Download k3s install script
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /tmp/k3s-install.sh
+        mode: '0755'
+
+    - name: Check if k3s is already installed
+      ansible.builtin.stat:
+        path: /etc/rancher/k3s/k3s.yaml
+      register: k3s_installed
+
+    - name: Install k3s with MySQL datastore
+      ansible.builtin.shell: |
+        set -o pipefail
+        /tmp/k3s-install.sh server \
+          --datastore-endpoint="mysql://{{ k3s_db_user }}:{{ k3s_user_password }}@tcp(localhost:3306)/{{ k3s_db_name }}" \
+          --disable traefik \
+          --disable servicelb \
+          --tls-san {{ k3s_tls_san }}
+      when: not k3s_installed.stat.exists
+      args:
+        creates: /etc/systemd/system/k3s.service
+        executable: /bin/bash
+
+    - name: Wait for k3s to initialize
+      ansible.builtin.wait_for:
+        path: /etc/rancher/k3s/k3s.yaml
+        timeout: 120
+
+    - name: Check if Helm is already installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/helm
+      register: helm_installed
+
+    - name: Download Helm install script
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+        dest: /tmp/get-helm-3.sh
+        mode: '0755'
+      when: not helm_installed.stat.exists
+
+    - name: Run Helm install script
+      ansible.builtin.shell: /tmp/get-helm-3.sh
+      args:
+        creates: /usr/local/bin/helm
+        executable: /bin/bash
+      when: not helm_installed.stat.exists
+
+    - name: Install Traefik via Helm with hostPort enabled
+      kubernetes.core.helm:
+        name: traefik
+        chart_ref: traefik/traefik
+        release_namespace: traefik
+        create_namespace: true
+        chart_repo_url: https://traefik.github.io/charts
+        release_values:
+          deployment:
+            kind: DaemonSet
+          ports:
+            web:
+              hostPort: 80
+            websecure:
+              hostPort: 443
+          service:
+            type: ClusterIP
+        update_repo_cache: true
+        state: present
+
+    - name: Install bash-completion
+      ansible.builtin.apt:
+        name: bash-completion
+        state: present
+
+    - name: Enable kubectl bash completion
+      ansible.builtin.shell: |
+        /usr/local/bin/kubectl completion bash > /etc/bash_completion.d/kubectl
+      args:
+        creates: /etc/bash_completion.d/kubectl
+      become: true
+
+    - name: Configure kubectl alias and completion
+      ansible.builtin.blockinfile:
+        path: /etc/bash.bashrc
+        marker: "# {mark} ANSIBLE MANAGED KUBECTL CONFIG"
+        block: |
+          alias k=kubectl
+          complete -o default -F __start_kubectl k
+      become: true
