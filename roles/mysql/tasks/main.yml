@@ -1,9 +1,15 @@
 ---
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
 - name: Install MySQL Server
   ansible.builtin.apt:
     name: mysql-server=8.0.*
     state: present
     update_cache: true
+  become: true
+  when: "'mysql-server' not in ansible_facts.packages"
 
 - name: Ensure MySQL service is running
   ansible.builtin.service:
@@ -14,15 +20,14 @@
 - name: Set MySQL root password
   community.mysql.mysql_user:
     name: root
-    host: "{{ item }}"
+    host: "localhost"
     password: "{{ mysql_root_password }}"
     priv: "*.*:ALL,GRANT"
     state: present
-  loop:
-    - localhost
-    - 127.0.0.1
-    - "::1"
-  when: "'::1' in ansible_all_ipv6_addresses"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    check_implicit_admin: true
+    column_case_sensitive: false
+  when: "'mysql-server' not in ansible_facts.packages"
 
 - name: Create k3s database
   community.mysql.mysql_db:

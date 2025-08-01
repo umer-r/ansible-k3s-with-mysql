@@ -1,5 +1,5 @@
 k3s_db_name: "k3s_db"
 k3s_db_user: "k3s_user"
-k3s_tls_san: "192.168.56.35,registry.local"
+k3s_tls_san: "<IP>,<DOMAIN>"
 k3s_version: "v1.32.6+k3s1"
 helm_traefik_version: "20.8.0"

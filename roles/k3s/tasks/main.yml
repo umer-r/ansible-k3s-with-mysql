@@ -19,6 +19,7 @@
     --disable servicelb
     --tls-san {{ k3s_tls_san }}
   args:
+    executable: /bin/bash
     creates: /etc/systemd/system/k3s.service
   when: not k3s_installed.stat.exists
 

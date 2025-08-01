@@ -12,14 +12,13 @@ Installs a single-node K3s cluster with MySQL as the datastore
 
 1. Clone repo:
    ```bash
-   git clone https://github.com/umer-r/ansible-k3s-with-mysql
-   cd k3s-mysql-ansible
+   git clone https://github.com/umer-r/ansible-k3s-with-mysql.git
+   cd ansible-k3s-with-mysql
     ```
 
 2. Create vault.yml
     ```bash
-    cd group_vars/all
-    ansible-vault create vault.yml
+    ansible-vault create group_vars/all/vault.yml
     ```
     Add variables:
         - mysql_root_password: ""
@@ -28,10 +27,13 @@ Installs a single-node K3s cluster with MySQL as the datastore
 3. Install collections:
     ```bash
     ansible-galaxy collection install -r requirement.yml
+    ansible -i inventory/hosts.ini all -m ansible.builtin.ping
     ```
 
 4. Run playbook:
     ```bash
+    ansible-playbook -i inventory/hosts.ini --check playbook.yml --ask-vault-pass
     ansible-playbook -i inventories/production/hosts.ini playbook.yml --ask-vault-pass
+    ansible-playbook -i inventory/hosts.ini playbook.yml
     ```
 
