@@ -1,0 +1,6 @@
+.vault_pass.txt
+vault.yml
+group_vars/all/vault.yml
+group_vars/all/.vault_pass.txt
+*.retry
+*.log

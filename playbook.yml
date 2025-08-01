@@ -1,0 +1,12 @@
+---
+- name: Setup single-node k3s with MySQL datastore
+  hosts: local
+  become: true
+  vars_files:
+    - group_vars/all/vars.yml
+    # - group_vars/all/vault.yml
+  roles:
+    - common
+    - mysql
+    - k3s
+    - traefik

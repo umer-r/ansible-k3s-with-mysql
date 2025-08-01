@@ -1,0 +1,63 @@
+---
+- name: Download k3s install script
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: '0755'
+
+- name: Check k3s installation status
+  ansible.builtin.stat:
+    path: /etc/rancher/k3s/k3s.yaml
+  register: k3s_installed
+
+- name: Install k3s server
+  ansible.builtin.shell: |
+    set -o pipefail
+    INSTALL_K3S_VERSION={{ k3s_version }} sh /tmp/k3s-install.sh server
+    --datastore-endpoint="mysql://{{ k3s_db_user }}:{{ k3s_user_password }}@tcp(localhost:3306)/{{ k3s_db_name }}"
+    --disable traefik
+    --disable servicelb
+    --tls-san {{ k3s_tls_san }}
+  args:
+    creates: /etc/systemd/system/k3s.service
+  when: not k3s_installed.stat.exists
+
+- name: Wait for k3s to initialize
+  ansible.builtin.wait_for:
+    path: /etc/rancher/k3s/k3s.yaml
+    timeout: 120
+
+- name: Check if Helm is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: helm_installed
+
+- name: Install Helm
+  when: not helm_installed.stat.exists
+  block:
+    - name: Download Helm installer
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get-helm-3.sh
+        mode: '0755'
+
+    - name: Run Helm installer
+      ansible.builtin.command: /bin/bash /tmp/get-helm-3.sh
+      args:
+        creates: /usr/local/bin/helm
+
+- name: Enable kubectl bash completion
+  ansible.builtin.shell: |
+      /usr/local/bin/kubectl completion bash > /etc/bash_completion.d/kubectl
+  args:
+    creates: /etc/bash_completion.d/kubectl
+  become: true
+
+- name: Configure kubectl alias and completion
+  ansible.builtin.blockinfile:
+    path: /etc/bash.bashrc
+    marker: "# {mark} ANSIBLE MANAGED KUBECTL CONFIG"
+    block: |
+      alias k=kubectl
+      complete -o default -F __start_kubectl k
+  become: true

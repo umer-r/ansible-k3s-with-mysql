@@ -1,0 +1,49 @@
+---
+- name: Install MySQL Server
+  ansible.builtin.apt:
+    name: mysql-server=8.0.*
+    state: present
+    update_cache: true
+
+- name: Ensure MySQL service is running
+  ansible.builtin.service:
+    name: mysql
+    state: started
+    enabled: true
+
+- name: Set MySQL root password
+  community.mysql.mysql_user:
+    name: root
+    host: "{{ item }}"
+    password: "{{ mysql_root_password }}"
+    priv: "*.*:ALL,GRANT"
+    state: present
+  loop:
+    - localhost
+    - 127.0.0.1
+    - "::1"
+  when: "'::1' in ansible_all_ipv6_addresses"
+
+- name: Create k3s database
+  community.mysql.mysql_db:
+    name: "{{ k3s_db_name }}"
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+
+- name: Create k3s database user
+  community.mysql.mysql_user:
+    name: "{{ k3s_db_user }}"
+    password: "{{ k3s_user_password }}"
+    priv: "{{ k3s_db_name }}.*:ALL"
+    host: "%"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    state: present
+
+- name: Allow MySQL to listen on all interfaces
+  ansible.builtin.lineinfile:
+    path: /etc/mysql/mysql.conf.d/mysqld.cnf
+    regexp: '^bind-address'
+    line: 'bind-address = 0.0.0.0'
+  notify: Restart mysql
