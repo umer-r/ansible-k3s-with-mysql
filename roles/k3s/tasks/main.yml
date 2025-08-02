@@ -1,22 +1,23 @@
 ---
-- name: Download k3s install script
-  ansible.builtin.get_url:
-    url: https://get.k3s.io
-    dest: /tmp/k3s-install.sh
-    mode: '0755'
-
 - name: Check k3s installation status
   ansible.builtin.stat:
     path: /etc/rancher/k3s/k3s.yaml
   register: k3s_installed
 
+- name: Download k3s install script
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: '0755'
+  when: not k3s_installed.stat.exists
+
 - name: Install k3s server
   ansible.builtin.shell: |
-    set -o pipefail
-    INSTALL_K3S_VERSION={{ k3s_version }} sh /tmp/k3s-install.sh server
-    --datastore-endpoint="mysql://{{ k3s_db_user }}:{{ k3s_user_password }}@tcp(localhost:3306)/{{ k3s_db_name }}"
-    --disable traefik
-    --disable servicelb
+    INSTALL_K3S_VERSION={{ k3s_version }} \
+    sh /tmp/k3s-install.sh server \
+    --datastore-endpoint="mysql://{{ k3s_db_user }}:{{ k3s_user_password }}@tcp(localhost:3306)/{{ k3s_db_name }}" \
+    --disable traefik \
+    --disable servicelb \
     --tls-san {{ k3s_tls_san }}
   args:
     executable: /bin/bash
@@ -27,6 +28,23 @@
   ansible.builtin.wait_for:
     path: /etc/rancher/k3s/k3s.yaml
     timeout: 120
+
+- name: Ensure .kube directory exists
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    mode: '0700'
+  become: true
+
+- name: Copy K3s kubeconfig to default location
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /root/.kube/config
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
 
 - name: Check if Helm is already installed
   ansible.builtin.stat:

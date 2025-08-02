@@ -21,9 +21,12 @@ Installs a single-node K3s cluster with MySQL as the datastore
     ```bash
     ansible-vault create group_vars/all/vault.yml
     ```
+
     Add variables:
-        - mysql_root_password: ""
-        - k3s_user_password: ""
+    ```
+    mysql_root_password: ""
+    k3s_user_password: ""
+    ```
 
     Configure variables in vars:
     ```bash
@@ -44,3 +47,17 @@ Installs a single-node K3s cluster with MySQL as the datastore
     ansible-playbook -i inventory/hosts.ini playbook.yml
     ```
 
+## Run locally (ubuntu)
+
+1. Install ansible:
+   ```bash
+   apt update
+   apt install software-properties-common
+   add-apt-repository --yes --update ppa:ansible/ansible
+   apt install ansible
+    ```
+
+2. Run playbook:
+    ```bash
+    ansible-playbook --connection=local --inventory 127.0.0.1, playbook.yml
+    ```
